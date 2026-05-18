@@ -6,10 +6,11 @@
 
 extern "C" void app_main(void)
 {
+    int time = 0;
     hall_sensor_tachometer tach;
     while (true)
     {
-        tach.update();
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        printf("waiting: %d == %d\n", time++, tach.count);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }

@@ -1,5 +1,6 @@
 class hall_sensor_tachometer {
-private:
+//private:
+public:
     int count;
 
 public:
