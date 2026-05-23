@@ -10,7 +10,7 @@ extern "C" void app_main(void)
     hall_sensor_tachometer tach;
     while (true)
     {
-        printf("waiting: %d == %d\n", time++, tach.count);
+        printf("waiting: %d == %.2f\n", time++, tach.get_freq());
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }

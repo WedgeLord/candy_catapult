@@ -1,7 +1,8 @@
 #include "hall_sensor_tachometer.h"
 
-#include "freertos/FreeRTOS.h"
 #include "driver/gpio.h"
+
+#define ROLLING_BUFFER_SIZE 5
 
 //#include <memory>
 
@@ -19,7 +20,10 @@ void call_update_on_tachometer(void * isr_tach)
 
 
 hall_sensor_tachometer::hall_sensor_tachometer()
-: count { 0 }
+: count { 0 },
+  avg_period { 0 },
+  rolling_buffer ( ROLLING_BUFFER_SIZE, 0 ),
+  index { 0 }
 {
     gpio_config_t  tach_gpio_config = {
         .pin_bit_mask = (1<<2),  // pin #2
@@ -35,14 +39,38 @@ hall_sensor_tachometer::hall_sensor_tachometer()
         gpio_install_isr_service(ESP_INTR_FLAG_EDGE | ESP_INTR_FLAG_LEVEL3)
     );
     ESP_ERROR_CHECK(
-        //gpio_isr_register(call_update_on_tachometer, this, (ESP_INTR_FLAG_EDGE | ESP_INTR_FLAG_LEVEL3), NULL)
         gpio_isr_handler_add(GPIO_NUM_2, call_update_on_tachometer, this)
     );
-    esp_intr_dump(stdout);
+    for (int p : rolling_buffer) { printf("%d | ", p); }
 }
 
+    static TickType_t last_measured_time = xTaskGetTickCountFromISR();
 void hall_sensor_tachometer::update()
 {
-    count += 1;
-    //printf("%d\n", count);
+    TickType_t current_measured_time = xTaskGetTickCountFromISR();
+
+    TickType_t tick_delta = current_measured_time - last_measured_time;
+
+    if (tick_delta < 1)
+    {
+        return;
+    }
+
+    avg_period -= rolling_buffer[index] / ROLLING_BUFFER_SIZE;
+    rolling_buffer[index] = tick_delta;
+    avg_period += rolling_buffer[index] / ROLLING_BUFFER_SIZE;
+    index += 1;
+    index %= ROLLING_BUFFER_SIZE;
+    last_measured_time = current_measured_time;
+}
+
+double hall_sensor_tachometer::get_freq()
+{
+    if (avg_period <= 0)
+    {
+        return -1.0;
+    }
+    double ms_period = avg_period / portTICK_PERIOD_MS;
+    return 60 / ( avg_period / 100 );
+    //return 60 / ( avg_period / 1000 ); //why isn't this right?
 }
