@@ -2,6 +2,7 @@
 
 #include <deque>
 #include <functional>
+#include <sys/time.h>
 
 
 class hall_sensor_tachometer
@@ -10,7 +11,7 @@ public:
     int count;
     double avg_period;
 private:
-    std::deque<TickType_t> rolling_buffer;
+    std::deque<suseconds_t> rolling_buffer;
     int index;
     std::function<void(int)> onUpdate;
 

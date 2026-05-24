@@ -56,27 +56,27 @@ hall_sensor_tachometer::~hall_sensor_tachometer()
 
 void hall_sensor_tachometer::update()
 {
-    static TickType_t last_measured_time = xTaskGetTickCountFromISR();
-    TickType_t current_measured_time = xTaskGetTickCountFromISR();
+    static struct timeval last_measured_time = { .tv_sec = 0, .tv_usec = 0 };
 
-    TickType_t tick_delta = current_measured_time - last_measured_time;
+    struct timeval current_measured_time;
+    gettimeofday(&current_measured_time, NULL);
 
-    if (tick_delta < 1)
+    suseconds_t us_delta = current_measured_time.tv_usec - last_measured_time.tv_usec;
+
+    if (us_delta > 0 && last_measured_time.tv_usec != 0)
     {
-        return;
-    }
+        avg_period -= rolling_buffer[index] / ROLLING_BUFFER_SIZE;
+        rolling_buffer[index] = us_delta;
+        avg_period += rolling_buffer[index] / ROLLING_BUFFER_SIZE;
+        index += 1;
+        index %= ROLLING_BUFFER_SIZE;
 
-    avg_period -= rolling_buffer[index] / ROLLING_BUFFER_SIZE;
-    rolling_buffer[index] = tick_delta;
-    avg_period += rolling_buffer[index] / ROLLING_BUFFER_SIZE;
-    index += 1;
-    index %= ROLLING_BUFFER_SIZE;
+        if (onUpdate != NULL)
+        {
+            onUpdate(get_freq());
+        }
+    }
     last_measured_time = current_measured_time;
-
-    if (onUpdate != NULL)
-    {
-        onUpdate(get_freq());
-    }
 }
 
 double hall_sensor_tachometer::get_freq()
@@ -85,7 +85,5 @@ double hall_sensor_tachometer::get_freq()
     {
         return -1.0;
     }
-    double ms_period = avg_period / portTICK_PERIOD_MS;
-    return 60 / ( avg_period / 100 );
-    //return 60 / ( ms_period / 1000 );
+    return 60 / ( avg_period / 1'000'000 );
 }
