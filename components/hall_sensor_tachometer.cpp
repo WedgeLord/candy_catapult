@@ -14,8 +14,10 @@ void call_update_on_tachometer(void * isr_tach)
         return;
     }
 
-    hall_sensor_tachometer* tach = static_cast<hall_sensor_tachometer*>(isr_tach);
-    tach->update();
+    if (xTaskCreate([](void * tach) -> void { static_cast<hall_sensor_tachometer *>(tach)->update(); vTaskDelete(NULL); }, "hall_tach", 5000, isr_tach, 3, NULL) != pdPASS)
+    {
+        printf("Failed to create task\n");
+    }
 }
 
 hall_sensor_tachometer::hall_sensor_tachometer()
@@ -46,7 +48,6 @@ hall_sensor_tachometer::hall_sensor_tachometer(std::function<void(int)> callback
     ESP_ERROR_CHECK(
         gpio_isr_handler_add(GPIO_NUM_2, call_update_on_tachometer, this)
     );
-    for (int p : rolling_buffer) { printf("%d | ", p); }
 }
 
 hall_sensor_tachometer::~hall_sensor_tachometer()
@@ -57,11 +58,13 @@ hall_sensor_tachometer::~hall_sensor_tachometer()
 void hall_sensor_tachometer::update()
 {
     static struct timeval last_measured_time = { .tv_sec = 0, .tv_usec = 0 };
+    //for (int p : rolling_buffer) { printf("%d | ", p); }; puts("");
 
     struct timeval current_measured_time;
     gettimeofday(&current_measured_time, NULL);
 
     suseconds_t us_delta = current_measured_time.tv_usec - last_measured_time.tv_usec;
+    us_delta += (current_measured_time.tv_sec - last_measured_time.tv_sec) * 1E+6;
 
     if (us_delta > 0 && last_measured_time.tv_usec != 0)
     {
