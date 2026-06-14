@@ -1,4 +1,5 @@
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 
 #include <deque>
 #include <functional>
@@ -13,6 +14,8 @@ public:
 private:
     std::deque<suseconds_t> rolling_buffer;
     int index;
+    QueueHandle_t latest_measured_time_handle;
+    TaskHandle_t update_task_handle;
     std::function<void(int)> onUpdate;
 
 public:

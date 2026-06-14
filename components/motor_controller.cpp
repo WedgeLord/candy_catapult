@@ -1,31 +1,45 @@
 #include "motor_controller.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <functional>
 #include <cmath>
 
-#define TASK_NOTIF_INDEX_RPM 1
+#define TASK_NOTIF_INDEX_RPM_REAL 1
+#define TASK_NOTIF_INDEX_RPM_TARGET 2
+
+uint32_t convert_percent_to_duty(double percent)
+{
+    return (percent > 1 ? 1 : (percent < 0 ? 0 : percent))
+            * pow(2, brushed_motor_controller::get_duty_resolution());
+}
 
 void approach_rpm(void * task_args)
 {
+    double rpm_adjustment = 0;
     int time = 0;
     uint32_t rpm = 0;
+    uint32_t target_rpm = 0;
     const ledc_channel_config_t *motor_channel_ptr = static_cast<ledc_channel_config_t *>(task_args);
-    auto convert_percent_to_duty = [](double percent) -> uint32_t { return (percent > 1 ? 1 : percent) * pow(2, brushed_motor_controller::get_duty_resolution()); };
     while (true)
     {
+        rpm_adjustment += (-0.0 + target_rpm - rpm) * 0.05;
         printf("waiting: %d == %lu\n", time++, rpm);
+        printf("target: %lu + %f -> %lu\n", target_rpm, rpm_adjustment, convert_percent_to_duty((target_rpm + rpm_adjustment) / 200.0));
         ESP_ERROR_CHECK(
-            ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, motor_channel_ptr->channel, convert_percent_to_duty(rpm / 200.0), 100, LEDC_FADE_WAIT_DONE)
+            ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, motor_channel_ptr->channel, convert_percent_to_duty((target_rpm + rpm_adjustment) / 200.0), 100, LEDC_FADE_WAIT_DONE)
         );
-        //vTaskDelay(1000 / portTICK_PERIOD_MS);
-        xTaskNotifyWaitIndexed(TASK_NOTIF_INDEX_RPM, 0, 0, &rpm, portMAX_DELAY);  // finished adjusting
+        xTaskNotifyWaitIndexed(TASK_NOTIF_INDEX_RPM_REAL, 0, 0, &rpm, portMAX_DELAY);  // finished adjusting
+        if (xTaskNotifyWaitIndexed(TASK_NOTIF_INDEX_RPM_TARGET, 0, 0, &target_rpm, 0) == pdPASS)  // get any target rpm updates, no wait
+        {// new target received
+            //rpm_adjustment = 0;
+        }
     }
 }
 
-std::function<void(int)> create_handle_change_rpm(brushed_motor_controller * controller_ptr)
+std::function<void(int)> create_handle_update_real_rpm(brushed_motor_controller * controller_ptr)
 {
-    return [controller_ptr](int rpm) -> void { controller_ptr->change_rpm(rpm); };
+    return [controller_ptr](int rpm) -> void { controller_ptr->update_real_rpm(rpm); };
 }
 
 
@@ -40,7 +54,7 @@ brushed_motor_controller::brushed_motor_controller()
     .speed_mode     = LEDC_LOW_SPEED_MODE,
     .duty_resolution = get_duty_resolution(),
     .timer_num      = LEDC_TIMER_0,
-    .freq_hz        = 20000,
+    .freq_hz        = 20'000,
     .clk_cfg        = LEDC_AUTO_CLK,
     .deconfigure    = false,
   },
@@ -58,6 +72,10 @@ brushed_motor_controller::brushed_motor_controller()
     }
 {
     // motor signal configuration
+
+    ESP_ERROR_CHECK(
+        gpio_set_pull_mode(GPIO_NUM_4, GPIO_PULLDOWN_ONLY)
+    );
 
     ESP_ERROR_CHECK(
         ledc_timer_config(&motor_duty_config)
@@ -78,7 +96,7 @@ brushed_motor_controller::brushed_motor_controller()
         printf("Failed to create task\n");
         //this->~brushed_motor_controller();
     }
-    tach.reset(new hall_sensor_tachometer(create_handle_change_rpm(this)));
+    tach.reset(new hall_sensor_tachometer(create_handle_update_real_rpm(this)));
 }
 
 brushed_motor_controller::~brushed_motor_controller()
@@ -106,11 +124,27 @@ brushed_motor_controller::~brushed_motor_controller()
     ledc_fade_func_uninstall();
 }
 
-// must be interrupt safe
-void brushed_motor_controller::change_rpm(int rpm)
+void brushed_motor_controller::update_real_rpm(uint32_t rpm)
 {
-    configASSERT(xTaskNotifyIndexedFromISR(rpm_control_task, TASK_NOTIF_INDEX_RPM, rpm, eSetValueWithOverwrite, NULL));
+    xTaskNotifyIndexedFromISR(rpm_control_task, TASK_NOTIF_INDEX_RPM_REAL, rpm, eSetValueWithOverwrite, NULL);
     //xTaskGenericNotify(rpm_control_task, TASK_NOTIF_INDEX_RPM, rpm, eSetValueWithOverwrite, NULL);
+}
+
+void brushed_motor_controller::update_target_rpm(uint32_t rpm)
+{
+    xTaskNotifyIndexed(rpm_control_task, TASK_NOTIF_INDEX_RPM_TARGET, rpm, eSetValueWithOverwrite);
+    xTaskNotifyIndexed(rpm_control_task, TASK_NOTIF_INDEX_RPM_REAL, 0, eNoAction);  // triggers a fake update, probably should be better
+    /*
+    if (rpm == 0)
+    {
+        ledc_timer_pause(LEDC_LOW_SPEED_MODE, motor_duty_config.timer_num);
+    }
+    else
+    {
+        ledc_timer_resume(LEDC_LOW_SPEED_MODE, motor_duty_config.timer_num);
+    }
+    //xTaskGenericNotify(rpm_control_task, TASK_NOTIF_INDEX_RPM, rpm, eSetValueWithOverwrite, NULL);
+*/
 }
 
 void brushed_motor_controller::set_motor_duty(double percent)

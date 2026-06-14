@@ -16,7 +16,8 @@ public:
     brushed_motor_controller();
     ~brushed_motor_controller();
 
-    void change_rpm(int rpm);
+    void update_real_rpm(uint32_t rpm);
+    void update_target_rpm(uint32_t rpm);
 
     static ledc_timer_bit_t  get_duty_resolution();
 

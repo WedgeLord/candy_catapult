@@ -19,8 +19,11 @@ extern "C" void app_main(void)
     /**/
     }
     brushed_motor_controller motor;
-    motor.change_rpm(50);
+    motor.update_target_rpm(180);
+    vTaskDelay(20'000 / portTICK_PERIOD_MS);
+    motor.update_target_rpm(75);
+    vTaskDelay(portMAX_DELAY);
     vTaskDelay(100'000 / portTICK_PERIOD_MS);
-    motor.change_rpm(0);
-    vTaskDelay(1'000 / portTICK_PERIOD_MS);
+    motor.update_target_rpm(0);
+    vTaskDelay(3'000 / portTICK_PERIOD_MS);
 }
