@@ -8,6 +8,8 @@
 #define TASK_NOTIF_INDEX_RPM_REAL 1
 #define TASK_NOTIF_INDEX_RPM_TARGET 2
 
+#define MOTOR_MAX_RPM 550.0
+
 uint32_t convert_percent_to_duty(double percent)
 {
     return (percent > 1 ? 1 : (percent < 0 ? 0 : percent))
@@ -30,9 +32,9 @@ void approach_rpm(void * task_args)
             rpm_adjustment = -20;
         }
         printf("waiting: %d == %lu\n", time++, rpm);
-        printf("target: %lu + %f -> %lu\n", target_rpm, rpm_adjustment, convert_percent_to_duty((target_rpm + rpm_adjustment) / 200.0));
+        printf("target: %lu + %f -> %lu\n", target_rpm, rpm_adjustment, convert_percent_to_duty((target_rpm + rpm_adjustment) / MOTOR_MAX_RPM));
         ESP_ERROR_CHECK(
-            ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, motor_channel_ptr->channel, convert_percent_to_duty((target_rpm + rpm_adjustment) / 200.0), 100, LEDC_FADE_WAIT_DONE)
+            ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, motor_channel_ptr->channel, convert_percent_to_duty((target_rpm + rpm_adjustment) / MOTOR_MAX_RPM), 100, LEDC_FADE_WAIT_DONE)
         );
         xTaskNotifyWaitIndexed(TASK_NOTIF_INDEX_RPM_REAL, 0, 0, &rpm, portMAX_DELAY);  // finished adjusting
         if (xTaskNotifyWaitIndexed(TASK_NOTIF_INDEX_RPM_TARGET, 0, 0, &target_rpm, 0) == pdPASS)  // get any target rpm updates, no wait

@@ -19,13 +19,11 @@ extern "C" void app_main(void)
         vTaskDelay(500 / portTICK_PERIOD_MS);
     }
     brushed_motor_controller motor;
-    /**/
     potentiometer motor_control([&motor](double level) -> void {
-        motor.update_target_rpm(level * 200);
+        motor.update_target_rpm(level * 550);
     });
-    //motor.update_target_rpm(180);
     //vTaskDelay(20'000 / portTICK_PERIOD_MS);
-    //motor.update_target_rpm(75);
+    //motor.update_target_rpm(0);
     vTaskDelay(portMAX_DELAY);
     /*
     QueueHandle_t q = xQueueCreate(1, sizeof(double));

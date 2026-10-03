@@ -3,7 +3,7 @@
 #include "driver/gpio.h"
 #include "driver/gpio_filter.h"
 
-#define ROLLING_BUFFER_SIZE 3
+#define ROLLING_BUFFER_SIZE 7
 
 
 void add_time_to_queue(void * isr_queue)
@@ -32,7 +32,7 @@ hall_sensor_tachometer::hall_sensor_tachometer(std::function<void(int)> callback
     gpio_config_t  tach_gpio_config = {
         .pin_bit_mask = (1<<2),  // pin #2
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_NEGEDGE,
     };
@@ -40,7 +40,7 @@ hall_sensor_tachometer::hall_sensor_tachometer(std::function<void(int)> callback
         gpio_config(&tach_gpio_config)
     );
     ESP_ERROR_CHECK_WITHOUT_ABORT(
-        gpio_install_isr_service(ESP_INTR_FLAG_EDGE | ESP_INTR_FLAG_LEVEL3)
+        gpio_install_isr_service(ESP_INTR_FLAG_EDGE)
     );
     ESP_ERROR_CHECK(
         gpio_isr_handler_add(GPIO_NUM_2, add_time_to_queue, &latest_measured_time_handle)
@@ -85,8 +85,8 @@ void hall_sensor_tachometer::update()
         suseconds_t us_delta = current_measured_time.tv_usec - last_measured_time.tv_usec;
         us_delta += (current_measured_time.tv_sec - last_measured_time.tv_sec) * 1E+6;
 
-        if (us_delta > (60E+6 / 200) * 0.5)
-        {// smallest reasonable period is 1min / 200rpm, as 200rpm is motor max speed, and period is halved again for unexpected cases up to 400rpm
+        if (us_delta > (60E+6 / 550.0) * 0.5)
+        {// smallest reasonable period is 1min / max_rpm, and period is halved again for unexpected cases up to twice max speed
             avg_period -= rolling_buffer[index] / ROLLING_BUFFER_SIZE;
             rolling_buffer[index] = us_delta;
             avg_period += rolling_buffer[index] / ROLLING_BUFFER_SIZE;
@@ -99,6 +99,7 @@ void hall_sensor_tachometer::update()
             }
             last_measured_time = current_measured_time;
         }
+        last_measured_time = current_measured_time;
     }
 }
 
