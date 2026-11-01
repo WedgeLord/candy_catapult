@@ -91,7 +91,7 @@ std::function<void(pot_callback)> potentiometer::data_to_level(const adc_continu
         {
             double new_level = level->raw_data / pow(2, 12);
             double diff = last_level - new_level;
-            if (diff > 0.01 || diff < -0.01)
+            if (diff > 0.02 || diff < -0.02)
             {
                 last_level = new_level;
                 return [new_level](pot_callback callback) -> void {

@@ -27,33 +27,40 @@ void approach_rpm(void * task_args)
     const ledc_channel_config_t *motor_channel_ptr = static_cast<ledc_channel_config_t *>(task_args);
     while (true)
     {
-        rpm_adjustment += (-0.0 + target_rpm - rpm) * 0.05;
-        // clamping range of changes to rpm
-        if (rpm_adjustment < -20)
+        if (rpm != INT32_MAX)
         {
-            rpm_adjustment = -20;
-        }
-        if (abs(target_rpm - rpm) <= 1)
-        {
-            if (++consecutive_accurate_rpm >= 3)
+            rpm_adjustment += (-0.0 + target_rpm - rpm) * 0.4;
+            // clamping range of changes to rpm
+            if (rpm_adjustment > 60)
             {
-                vTaskDelay(((60.0 / rpm) / 2) * 1E3 / portTICK_PERIOD_MS);
-                target_rpm = 0;
-                ESP_ERROR_CHECK(
-                    ledc_set_duty_and_update(LEDC_LOW_SPEED_MODE, motor_channel_ptr->channel, 0, 0)
-                );
-                vTaskDelete(NULL);
+                rpm_adjustment = 20;
+            }
+            else if (rpm_adjustment < -20)
+            {
+                rpm_adjustment = -20;
+            }
+            if (abs(target_rpm - rpm) <= 1)
+            {
+                if (++consecutive_accurate_rpm >= 3)
+                {
+                    vTaskDelay(((60.0 / rpm) / 5) * 1E3 / portTICK_PERIOD_MS);
+                    target_rpm = 0;
+                    ESP_ERROR_CHECK(
+                        ledc_set_duty_and_update(LEDC_LOW_SPEED_MODE, motor_channel_ptr->channel, 0, 0)
+                    );
+                    vTaskDelete(NULL);
+                }
+            }
+            else
+            {
+                consecutive_accurate_rpm = 0;
             }
         }
-        else
-        {
-            consecutive_accurate_rpm = 0;
-            target_duty = convert_percent_to_duty((target_rpm + rpm_adjustment) / MOTOR_MAX_RPM);
-            ESP_ERROR_CHECK(
-                ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, motor_channel_ptr->channel, target_duty, 100, LEDC_FADE_WAIT_DONE)
-            );
-        }
-        printf("waiting: %d == %lu\n", time++, rpm);
+        target_duty = convert_percent_to_duty((target_rpm + rpm_adjustment) / MOTOR_MAX_RPM);
+        ESP_ERROR_CHECK(
+            ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, motor_channel_ptr->channel, target_duty, 100, LEDC_FADE_WAIT_DONE)
+        );
+        printf("loop %d @ %lu rpm\n", time++, rpm);
         printf("target: %lu + %f -> %lu\n", target_rpm, rpm_adjustment, convert_percent_to_duty((target_rpm + rpm_adjustment) / MOTOR_MAX_RPM));
         xTaskNotifyWaitIndexed(TASK_NOTIF_INDEX_RPM_REAL, 0, 0, &rpm, portMAX_DELAY);  // finished adjusting
         if (xTaskNotifyWaitIndexed(TASK_NOTIF_INDEX_RPM_TARGET, 0, 0, &target_rpm, 0) == pdPASS)  // get any target rpm updates, no wait
@@ -159,7 +166,7 @@ void brushed_motor_controller::update_real_rpm(uint32_t rpm)
 void brushed_motor_controller::update_target_rpm(uint32_t rpm)
 {
     xTaskNotifyIndexed(rpm_control_task, TASK_NOTIF_INDEX_RPM_TARGET, rpm, eSetValueWithOverwrite);
-    xTaskNotifyIndexed(rpm_control_task, TASK_NOTIF_INDEX_RPM_REAL, 0, eNoAction);  // triggers a fake update, probably should be better
+    xTaskNotifyIndexed(rpm_control_task, TASK_NOTIF_INDEX_RPM_REAL, INT32_MAX, eSetValueWithoutOverwrite);  // triggers a fake update, probably should be better
     /*
     if (rpm == 0)
     {
